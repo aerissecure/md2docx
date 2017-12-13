@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"baliance.com/gooxml/document"
+	"baliance.com/gooxml/schema/soo/wml"
 	bf "gopkg.in/russross/blackfriday.v2"
 )
 
@@ -43,8 +44,14 @@ type DocxRendererParameters struct {
 type DocxRenderer struct {
 	DocxRendererParameters
 
-	Document *document.Document
-	para     document.Paragraph
+	Document  *document.Document
+	para      document.Paragraph
+	listLevel int
+}
+
+func (r *DocxRenderer) run() document.Run {
+	runs := r.para.Runs()
+	return runs[len(runs)-1] // should always exist
 }
 
 func (r *DocxRenderer) getHeading(level int) string {
@@ -69,6 +76,7 @@ func NewDocxRenderer(doc *document.Document, params DocxRendererParameters) *Doc
 	return &DocxRenderer{
 		DocxRendererParameters: params,
 		Document:               doc,
+		listLevel:              -1, // -1: not in a list, 0: first level of list
 	}
 }
 
@@ -87,6 +95,8 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 	switch node.Type {
 
 	case bf.Code: // gets text
+		// we don't support line breaks in code. line breaks in code do not
+		// trigger hardbreak, so don't use returns between ``
 		run := r.para.AddRun()
 		run.AddText(string(node.Literal))
 		run.Properties().SetStyle(r.StyleCodeInline)
@@ -97,7 +107,16 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		r.para = r.Document.AddParagraph()
 		r.para.Properties().SetStyle(r.StyleCodeBlock)
 		run := r.para.AddRun()
-		breakingRun(run, string(node.Literal))
+		// HardLine does not get called inside of code blocks
+
+		lines := strings.Split(string(node.Literal), "\n")
+		for i, line := range lines {
+			run.AddText(line)
+			// no break after last two tokens (2nd to last is last text, last is an additional break from leaving the block)
+			if i+2 < len(lines) {
+				run.AddBreak()
+			}
+		}
 
 	case bf.Heading: // no paragraph child
 		if !entering {
@@ -114,11 +133,28 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		r.para = r.Document.AddParagraph()
 		if node.Parent.Type == bf.Item {
 			r.setListStyle(r.para, node.Parent.Parent.ListData.ListFlags)
+			if r.listLevel > 0 {
+				numpr := wml.NewCT_NumPr()
+				lvl := wml.NewCT_DecimalNumber()
+				lvl.ValAttr = int64(r.listLevel)
+				numpr.Ilvl = lvl
+				numpr.NumId = lvl
+				r.para.X().PPr.NumPr = numpr
+			}
+			// do something with r.listLevel
 		}
 
+	// Softbreak: a simple single newline("\n"). In html can be rendered as a space or a carriage return.
+	// https://github.com/russross/blackfriday/blob/v2/inline.go#L162
 	// case bf.Softbreak: // simple new line ("\n"). this is not implemented and will never trigger: https://github.com/russross/blackfriday/issues/315
 
-	// case bf.Hardbreak: // new line with two spaces preceding ("  \n", or two new lines ("\n\n")
+	// Hardbreak: a single newline/return preceded by at least two spaces. translated as a <br>
+	case bf.Hardbreak:
+		// using HardLineBreak extension has unintended affect on list Items
+		// a simple list will count the returns between items as hard breaks
+		// and rendering them leads to a list with spaces.
+		// if HardLineBreak is used, this can be overcome by checking node.Parent.Parent == Item
+		r.run().AddBreak()
 
 	case bf.Text:
 		if node.Parent.Type == bf.Link {
@@ -137,16 +173,25 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		}
 
 		run := r.para.AddRun()
+
 		if node.Parent.Type == bf.Strong {
 			run.Properties().SetBold(true)
 		}
+
 		if node.Parent.Type == bf.Emph {
 			run.Properties().SetItalic(true)
 		}
-		breakingRun(run, string(node.Literal))
+		run.AddText(string(node.Literal))
+
+	case bf.List:
+		if entering {
+			r.listLevel++
+		} else {
+			r.listLevel--
+		}
 
 	// handled but uneeded node types:
-	case bf.Document, bf.Strong, bf.Emph, bf.List, bf.Item, bf.Link:
+	case bf.Document, bf.Strong, bf.Emph, bf.Link, bf.Item:
 		break
 	default:
 		panic("unsupported node type: " + node.Type.String())
@@ -166,21 +211,8 @@ func (r *DocxRenderer) RenderFooter(w io.Writer, ast *bf.Node) {
 	// io.WriteString(w, "footer is written here")
 }
 
-// breakingRun renders a run that has line breaks (soft breaks), but no
-// other markdown tokens.
-func breakingRun(run document.Run, text string) {
-	lines := strings.Split(text, "\n")
-	for i, line := range lines {
-		run.AddText(line)
-		// add break unless on last token
-		if i+1 < len(lines) {
-			run.AddBreak()
-		}
-	}
-}
-
 func (r *DocxRenderer) setListStyle(para document.Paragraph, flags bf.ListType) {
-	ordered := flags&bf.ListTypeOrdered == 1
+	ordered := flags&bf.ListTypeOrdered != 0
 	if ordered {
 		para.Properties().SetStyle(r.StyleListOrdered)
 	} else {
