@@ -97,7 +97,7 @@ backslack (this is new line)
 
 func main() {
 	// doc := document.New()
-	doc, _ := document.OpenTemplate("../template.docx")
+	doc, _ := document.OpenTemplate("template.docx")
 	// for _, s := range doc.Styles.Styles() {
 	// 	fmt.Println("style", s.Name(), "has ID of", s.StyleID(), "type is", s.Type())
 	// }
