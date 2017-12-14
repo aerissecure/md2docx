@@ -9,9 +9,6 @@ import (
 	bf "gopkg.in/russross/blackfriday.v2"
 )
 
-// need to warn if a style is needed but was left blank
-// need to warn if a style provided is not found in the document.
-
 // DocxRendererParameters configuration object that gets passed
 // to NewDocxRenderer.
 type DocxRendererParameters struct {
