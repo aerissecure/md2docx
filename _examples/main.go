@@ -68,6 +68,18 @@ am i still on the first bullet?
 break 2\
 break 3\
 
+lets try a bulleted list with multiple paragraphs in a bullet:
+
+- first item
+
+    Continuing the first item
+- second item
+
+    continuing second item
+
+        $ with this whatever it is
+        $ with this again
+
 followed by the following ordered:
 
 1. this is num 1
