@@ -1,18 +1,3 @@
-//
-// Blackfriday Markdown Processor
-// Available at http://github.com/russross/blackfriday
-//
-// Copyright © 2011 Russ Ross <russ@russross.com>.
-// Distributed under the Simplified BSD License.
-// See README.md for details.
-//
-
-//
-//
-// HTML rendering backend
-//
-//
-
 package md2docx
 
 import (
@@ -24,7 +9,8 @@ import (
 	bf "gopkg.in/russross/blackfriday.v2"
 )
 
-// DocxRendererParameters
+// DocxRendererParameters configuration object that gets passed
+// to NewDocxRenderer.
 type DocxRendererParameters struct {
 	StyleHyperlink    string
 	StyleListOrdered  string
@@ -47,6 +33,8 @@ type DocxRenderer struct {
 	Document  *document.Document
 	para      document.Paragraph
 	listLevel int
+	strong    bool
+	emph      bool
 }
 
 func (r *DocxRenderer) run() document.Run {
@@ -156,6 +144,10 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		// if HardLineBreak is used, this can be overcome by checking node.Parent.Parent == Item
 		r.run().AddBreak()
 
+	case bf.Strong:
+		r.strong = entering
+	case bf.Emph:
+		r.emph = entering
 	case bf.Text:
 		if node.Parent.Type == bf.Link {
 			linkText := string(node.Literal)
@@ -173,12 +165,10 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		}
 
 		run := r.para.AddRun()
-
-		if node.Parent.Type == bf.Strong {
+		if r.strong {
 			run.Properties().SetBold(true)
 		}
-
-		if node.Parent.Type == bf.Emph {
+		if r.emph {
 			run.Properties().SetItalic(true)
 		}
 		run.AddText(string(node.Literal))
@@ -191,7 +181,7 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		}
 
 	// handled but uneeded node types:
-	case bf.Document, bf.Strong, bf.Emph, bf.Link, bf.Item:
+	case bf.Document, bf.Link, bf.Item:
 		break
 	default:
 		panic("unsupported node type: " + node.Type.String())
@@ -199,13 +189,13 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 	return bf.GoToNext
 }
 
-// // RenderHeader writes HTML document preamble and TOC if requested.
+// RenderHeader writes document preamble and TOC if requested.
 func (r *DocxRenderer) RenderHeader(w io.Writer, ast *bf.Node) {
 	return
 	// io.WriteString(w, "header is written here\n")
 }
 
-// // RenderFooter writes HTML document footer.
+// RenderFooter writes document footer.
 func (r *DocxRenderer) RenderFooter(w io.Writer, ast *bf.Node) {
 	return
 	// io.WriteString(w, "footer is written here")

@@ -1,15 +1,11 @@
 package main
 
 import (
-	// "fmt"
-
-	"github.com/aerissecure/md2docx"
+	"baliance.com/gooxml/document"
 	bf "gopkg.in/russross/blackfriday.v2"
 
-	"baliance.com/gooxml/document"
+	"github.com/aerissecure/md2docx"
 )
-
-// soft break is just a single return. it can have
 
 var input = []byte(`
 lets try a soft
@@ -45,7 +41,11 @@ and a second line of fenced code
 ~~~
 
 Regular paragraph.
-` + "\nRegular paragraph with `code code\n\ncode` inside" + `
+Regular paragraph with ` + "`code code code`" + ` inside
+
+code span with line break like this` + " `code code\ncode` " + `should
+actually just render as a single space, which words because docx doesn't
+interpret \\n and just renders it as a space anyway.
 
 Another paragraph, with the following:
 
@@ -68,7 +68,8 @@ followed by the following ordered:
 1. this is num 1
 1. this is num 2
 1. this is num 3
-    1. this is indentied a level
+    1. this is indented a level _**and bold/ital**_
+    1. this is indented a level
 
 closing paragraph with a <http://google.com> link with no info
 
@@ -92,6 +93,8 @@ and now i'm going to try the\
 backslack (this is new line)
 
 ### h3
+
+Last paragraph, for **_bold italic_**.
 
 `)
 
