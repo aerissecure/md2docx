@@ -9,6 +9,9 @@ import (
 	bf "gopkg.in/russross/blackfriday.v2"
 )
 
+// need to warn if a style is needed but was left blank
+// need to warn if a style provided is not found in the document.
+
 // DocxRendererParameters configuration object that gets passed
 // to NewDocxRenderer.
 type DocxRendererParameters struct {
@@ -22,6 +25,7 @@ type DocxRendererParameters struct {
 	StyleHeading5     string
 	StyleCodeBlock    string
 	StyleCodeInline   string
+	StyleBlockQuote   string
 }
 
 // DocxRenderer is a type that implements the Renderer interface for docx output.
@@ -114,6 +118,11 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		style := r.getHeading(node.HeadingData.Level)
 		r.para.Properties().SetStyle(style)
 
+	case bf.BlockQuote:
+		if !entering {
+			r.para.Properties().SetStyle(r.StyleBlockQuote)
+		}
+
 	case bf.Paragraph:
 		if !entering {
 			break
@@ -129,7 +138,6 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 				numpr.NumId = lvl
 				r.para.X().PPr.NumPr = numpr
 			}
-			// do something with r.listLevel
 		}
 
 	// Softbreak: a simple single newline("\n"). In html can be rendered as a space or a carriage return.

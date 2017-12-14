@@ -41,6 +41,11 @@ and a second line of fenced code
 ~~~
 
 Regular paragraph.
+
+> block quote here
+> second line of block quote
+> third line of block quote?
+
 Regular paragraph with ` + "`code code code`" + ` inside
 
 code span with line break like this` + " `code code\ncode` " + `should
@@ -118,6 +123,7 @@ func main() {
 		StyleHeading5:     "Heading5",
 		StyleCodeBlock:    "IntenseQuote",
 		StyleCodeInline:   "BookTitle",
+		StyleBlockQuote:   "Quote",
 	}
 
 	// check with empty style
