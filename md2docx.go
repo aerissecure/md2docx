@@ -1,28 +1,41 @@
 package md2docx
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"strings"
 
-	"baliance.com/gooxml/document"
-	"baliance.com/gooxml/schema/soo/wml"
 	bf "gopkg.in/russross/blackfriday.v2"
+
+	"baliance.com/gooxml/color"
+	"baliance.com/gooxml/document"
+	// "baliance.com/gooxml/measurement"
+	"baliance.com/gooxml/schema/soo/wml"
+)
+
+// list formatting should be correct once this is fixed:
+// https://github.com/baliance/gooxml/issues/136#issuecomment-367218322
+
+var (
+	gray = color.RGB(242, 242, 242)
 )
 
 // DocxRendererParameters configuration object that gets passed
 // to NewDocxRenderer.
 type DocxRendererParameters struct {
-	StyleHyperlink    string
-	StyleListOrdered  string
-	StyleListBulleted string
-	StyleHeading1     string
-	StyleHeading2     string
-	StyleHeading3     string
-	StyleHeading4     string
-	StyleHeading5     string
-	StyleCodeBlock    string
-	StyleCodeInline   string
-	StyleBlockQuote   string
+	StyleHyperlink     string
+	StyleListOrdered   string
+	StyleListUnordered string
+	StyleHeading1      string
+	StyleHeading2      string
+	StyleHeading3      string
+	StyleHeading4      string
+	StyleHeading5      string
+	StyleCodeBlock     string
+	StyleCodeInline    string
+	StyleBlockQuote    string
+	StyleTable         string // This is a table specific style
 }
 
 // DocxRenderer is a type that implements the Renderer interface for docx output.
@@ -31,8 +44,11 @@ type DocxRendererParameters struct {
 type DocxRenderer struct {
 	DocxRendererParameters
 
-	Document  *document.Document
+	doc       *document.Document
 	para      document.Paragraph
+	table     document.Table
+	row       document.Row
+	tableHead bool
 	listLevel int
 	strong    bool
 	emph      bool
@@ -62,10 +78,11 @@ func (r *DocxRenderer) getHeading(level int) string {
 // satisfies the Renderer interface.
 func NewDocxRenderer(doc *document.Document, params DocxRendererParameters) *DocxRenderer {
 	// params must specify all styles that will be used. Default is "", which defaults to Normal
+
 	return &DocxRenderer{
 		DocxRendererParameters: params,
-		Document:               doc,
-		listLevel:              -1, // -1: not in a list, 0: first level of list
+		doc:       doc,
+		listLevel: -1, // -1: not in a list, 0: first level of list
 	}
 }
 
@@ -80,12 +97,15 @@ func NewDocxRenderer(doc *document.Document, params DocxRendererParameters) *Doc
 // The typical behavior is to return GoToNext, which asks for the usual
 // traversal to the next node.
 func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.WalkStatus {
+	// fmt.Println(node.Type)
 
 	switch node.Type {
 
 	case bf.Code: // gets text
 		// we don't support line breaks in code. line breaks in code do not
 		// trigger hardbreak, so don't use returns between ``
+
+		// when in a table, case bf.Text runs before this with an empty Literal. bug?
 		run := r.para.AddRun()
 		run.AddText(string(node.Literal))
 		run.Properties().SetStyle(r.StyleCodeInline)
@@ -93,7 +113,7 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 	case bf.CodeBlock: // gets text, is not child of paragraph
 		// info is the text on the same line as the opening ~~~, such as programming language ~~~python
 		// i could use this to controls some type of formatting maybe
-		r.para = r.Document.AddParagraph()
+		r.para = r.doc.AddParagraph()
 		r.para.Properties().SetStyle(r.StyleCodeBlock)
 		run := r.para.AddRun()
 		// HardLine does not get called inside of code blocks
@@ -111,7 +131,7 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		if !entering {
 			break
 		}
-		r.para = r.Document.AddParagraph()
+		r.para = r.doc.AddParagraph()
 		style := r.getHeading(node.HeadingData.Level)
 		r.para.Properties().SetStyle(style)
 
@@ -124,17 +144,9 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		if !entering {
 			break
 		}
-		r.para = r.Document.AddParagraph()
+		r.para = r.doc.AddParagraph()
 		if node.Parent.Type == bf.Item {
-			r.setListStyle(r.para, node.Parent.Parent.ListData.ListFlags)
-			if r.listLevel > 0 {
-				numpr := wml.NewCT_NumPr()
-				lvl := wml.NewCT_DecimalNumber()
-				lvl.ValAttr = int64(r.listLevel)
-				numpr.Ilvl = lvl
-				numpr.NumId = lvl
-				r.para.X().PPr.NumPr = numpr
-			}
+			r.setListStyle(r.para, r.listLevel, node.Parent.Parent.ListData.ListFlags)
 		}
 
 	// Softbreak: a simple single newline("\n"). In html can be rendered as a space or a carriage return.
@@ -151,8 +163,10 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 
 	case bf.Strong:
 		r.strong = entering
+
 	case bf.Emph:
 		r.emph = entering
+
 	case bf.Text:
 		if node.Parent.Type == bf.Link {
 			linkText := string(node.Literal)
@@ -185,11 +199,46 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 			r.listLevel--
 		}
 
+	case bf.Table:
+		if !entering {
+			break
+		}
+		r.table = r.doc.AddTable()
+		r.table.Properties().SetWidthPercent(100)
+		if r.StyleTable != "" {
+			r.table.Properties().SetStyle(r.StyleTable)
+		}
+
+	case bf.TableHead:
+		// not currently being used
+		r.tableHead = entering
+
+	case bf.TableBody:
+		break
+
+	case bf.TableRow:
+		if !entering {
+			break
+		}
+		r.row = r.table.AddRow()
+
+	case bf.TableCell:
+		if !entering {
+			break
+		}
+		cell := r.row.AddCell()
+		r.para = cell.AddParagraph()
+		align := cellAlignment(node.Align)
+		r.para.Properties().SetAlignment(align)
+
 	// handled but uneeded node types:
 	case bf.Document, bf.Link, bf.Item:
 		break
+
 	default:
-		panic("unsupported node type: " + node.Type.String())
+		fmt.Println("unsupported node type", node.Type.String())
+		// probably default to just putting it into a regular paragraph?
+
 	}
 	return bf.GoToNext
 }
@@ -206,11 +255,65 @@ func (r *DocxRenderer) RenderFooter(w io.Writer, ast *bf.Node) {
 	// io.WriteString(w, "footer is written here")
 }
 
-func (r *DocxRenderer) setListStyle(para document.Paragraph, flags bf.ListType) {
+// setListStyle styles a paragraph as a list. to do so requires
+// setting (1) paragraph style, (2) indentation level, (3) numbering definition
+func (r *DocxRenderer) setListStyle(para document.Paragraph, lvl int, flags bf.ListType) {
+	if lvl < 0 {
+		// don't set style if indent level is not set
+		return
+	}
 	ordered := flags&bf.ListTypeOrdered != 0
+	var style string
 	if ordered {
-		para.Properties().SetStyle(r.StyleListOrdered)
+		style = r.StyleListOrdered
 	} else {
-		para.Properties().SetStyle(r.StyleListBulleted)
+		style = r.StyleListUnordered
+	}
+	// style is set on all indentation levels
+	para.SetStyle(style)
+	// ilvl & numId only set starting the second indentation
+	if lvl > 0 {
+		nd, err := r.styleToNumDef(style)
+		if err != nil {
+			fmt.Println("error retrieving numbering definition", err)
+		}
+		r.para.SetNumberingLevel(lvl)
+		r.para.SetNumberingDefinition(nd)
+	}
+}
+
+// styleToNumDef gets the NumberingDefinition that is used to format a list
+// for the style. The style is typically referenced in the first lvl element
+// under abstractNum. However, it is unclear if the style will always be
+// referenced from the abstractNum.
+func (r *DocxRenderer) styleToNumDef(style string) (document.NumberingDefinition, error) {
+	var errNumDef document.NumberingDefinition
+
+	numDefs := r.doc.Numbering.Definitions()
+	if len(numDefs) == 0 {
+		return errNumDef, errors.New("no numbering definitions found")
+	}
+	for _, nd := range numDefs {
+		for _, lvl := range nd.X().Lvl {
+			if lvl.PStyle != nil && style == lvl.PStyle.ValAttr {
+				return nd, nil
+			}
+		}
+	}
+	return errNumDef, fmt.Errorf("numbering definition not found for style: %s", style)
+}
+
+// cellAlignment gets the docx alignment object indicated by
+// the CellAlignFlags.
+func cellAlignment(align bf.CellAlignFlags) wml.ST_Jc {
+	switch align {
+	case bf.TableAlignmentLeft:
+		return wml.ST_JcLeft
+	case bf.TableAlignmentCenter:
+		return wml.ST_JcCenter
+	case bf.TableAlignmentRight:
+		return wml.ST_JcRight
+	default:
+		return wml.ST_JcUnset
 	}
 }

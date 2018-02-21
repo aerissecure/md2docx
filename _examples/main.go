@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"baliance.com/gooxml/document"
 	bf "gopkg.in/russross/blackfriday.v2"
 
@@ -113,32 +115,38 @@ backslack (this is new line)
 
 Last paragraph, for **_bold italic_**.
 
+# Tables Section
+
+
+Key | Value
+:----:|------
+hey | ` + "`you`" + `
+cell2 | *hey*
+cell3 | _hey_ | you
+**1** | **2**
 `)
 
 func main() {
 	// doc := document.New()
 	doc, _ := document.OpenTemplate("template.docx")
-	// for _, s := range doc.Styles.Styles() {
-	// 	fmt.Println("style", s.Name(), "has ID of", s.StyleID(), "type is", s.Type())
-	// }
-
-	doc.AddParagraph().AddRun().AddText("\n\nasdfasdf\n\n\nasdfasdf\n\n")
-
-	params := md2docx.DocxRendererParameters{
-		StyleHyperlink:    "Hyperlink",
-		StyleListOrdered:  "ListOrdered",
-		StyleListBulleted: "ListParagraph",
-		StyleHeading1:     "Heading1",
-		StyleHeading2:     "Heading2",
-		StyleHeading3:     "Heading3",
-		StyleHeading4:     "Heading4",
-		StyleHeading5:     "Heading5",
-		StyleCodeBlock:    "IntenseQuote",
-		StyleCodeInline:   "BookTitle",
-		StyleBlockQuote:   "Quote",
+	for _, s := range doc.Styles.Styles() {
+		fmt.Println("style", s.Name(), "has ID of", s.StyleID(), "type is", s.Type())
 	}
 
-	// check with empty style
+	params := md2docx.DocxRendererParameters{
+		StyleHyperlink:     "Hyperlink",
+		StyleListOrdered:   "ListOrdered",
+		StyleListUnordered: "ListParagraph",
+		StyleHeading1:      "Heading1",
+		StyleHeading2:      "Heading2",
+		StyleHeading3:      "Heading3",
+		StyleHeading4:      "Heading4",
+		StyleHeading5:      "Heading5",
+		StyleCodeBlock:     "IntenseQuote",
+		StyleCodeInline:    "BookTitle",
+		StyleBlockQuote:    "Quote",
+		StyleTable:         "GridTable4-Accent1",
+	}
 
 	renderer := md2docx.NewDocxRenderer(doc, params)
 	bf.Run(input, bf.WithRenderer(renderer), bf.WithExtensions(bf.CommonExtensions))
