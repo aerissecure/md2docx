@@ -1,4 +1,4 @@
-package md2docx
+package md2docx // import "github.com/aerissecure/md2docx"
 
 import (
 	"errors"
@@ -48,6 +48,7 @@ type DocxRenderer struct {
 	para      document.Paragraph
 	table     document.Table
 	row       document.Row
+	cell      document.Cell
 	tableHead bool
 	listLevel int
 	strong    bool
@@ -183,6 +184,40 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 			break
 		}
 
+		if node.Parent.Type == bf.TableCell {
+			lines := strings.Split(string(node.Literal), "\\n")
+
+			run := r.para.AddRun()
+			if r.strong {
+				run.Properties().SetBold(true)
+			}
+			if r.emph {
+				run.Properties().SetItalic(true)
+			}
+
+			run.AddText(lines[0])
+
+			if len(lines) > 1 {
+				for _, line := range lines[1:] {
+					// new para and duplicate existing para properties
+					para := r.cell.AddParagraph()
+					para.Properties().X().Jc = r.para.Properties().X().Jc
+					r.para = para
+
+					run := r.para.AddRun()
+					if r.strong {
+						run.Properties().SetBold(true)
+					}
+					if r.emph {
+						run.Properties().SetItalic(true)
+					}
+
+					run.AddText(line)
+				}
+			}
+			break
+		}
+
 		run := r.para.AddRun()
 		if r.strong {
 			run.Properties().SetBold(true)
@@ -190,6 +225,7 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		if r.emph {
 			run.Properties().SetItalic(true)
 		}
+
 		run.AddText(string(node.Literal))
 
 	case bf.List:
@@ -226,10 +262,25 @@ func (r *DocxRenderer) RenderNode(w io.Writer, node *bf.Node, entering bool) bf.
 		if !entering {
 			break
 		}
-		cell := r.row.AddCell()
-		r.para = cell.AddParagraph()
+		r.cell = r.row.AddCell()
+		r.para = r.cell.AddParagraph()
 		align := cellAlignment(node.Align)
 		r.para.Properties().SetAlignment(align)
+		// If i keep the special handling for Cell under bf.Text, then i may
+		// not want to create the paragraph here
+		// for multiple paragraphs in same cell, is there a way to just copy the
+		// properties of the previous paragraph??
+		// Using \n as a newline in tables is a good idea i think. That is obviously
+		// not how it would work in html, but i think its ok for input text to render
+		// slightly differently based on the output. having \n mean something in docx
+		// output and not in html output is better than using <br> for docx output.
+		// Also word and html treat returns differently, in html they get ignored and
+		// word they get displayed as a newline or paragraph
+		//
+		// para.Properties().X().CT_PPr
+		//
+		// an escaped backslack is actually being used, its a \n literal, not a newline
+		// that we are matching on.
 
 	// handled but uneeded node types:
 	case bf.Document, bf.Link, bf.Item:

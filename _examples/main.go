@@ -118,12 +118,14 @@ Last paragraph, for **_bold italic_**.
 # Tables Section
 
 
-Key | Value
-:----:|------
-hey | ` + "`you`" + `
-cell2 | *hey*
-cell3 | _hey_ | you
-**1** | **2**
+|Key | Value|
+|:----:|------|
+|hey | ` + "`you`" + `|
+|cell2 | *hey*|
+|cell3 | _hey_ | you
+|**1** | **2**|
+|new \ line| test|
+|- new \n - line| - test\n- test2|
 `)
 
 func main() {
@@ -148,6 +150,10 @@ func main() {
 		StyleTable:         "GridTable4-Accent1",
 	}
 
+	// Much of what we do will be rendering into a table cell or specific location
+	// in a document. What do we want to accept as being passed in?
+	// it would be cool to just be able to render without a document, but I don't
+	// think that works.
 	renderer := md2docx.NewDocxRenderer(doc, params)
 	bf.Run(input, bf.WithRenderer(renderer), bf.WithExtensions(bf.CommonExtensions))
 	doc.SaveToFile("out.docx")
