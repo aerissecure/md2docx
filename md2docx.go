@@ -82,8 +82,8 @@ func NewDocxRenderer(doc *document.Document, params DocxRendererParameters) *Doc
 
 	return &DocxRenderer{
 		DocxRendererParameters: params,
-		doc:       doc,
-		listLevel: -1, // -1: not in a list, 0: first level of list
+		doc:                    doc,
+		listLevel:              -1, // -1: not in a list, 0: first level of list
 	}
 }
 
@@ -346,7 +346,7 @@ func (r *DocxRenderer) styleToNumDef(style string) (document.NumberingDefinition
 	}
 	for _, nd := range numDefs {
 		for _, lvl := range nd.X().Lvl {
-			if lvl.PStyle != nil && style == lvl.PStyle.ValAttr {
+			if lvl.PStyle != nil && lvl.PStyle.ValAttr == style {
 				return nd, nil
 			}
 		}

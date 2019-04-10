@@ -126,6 +126,10 @@ Last paragraph, for **_bold italic_**.
 |**1** | **2**|
 |new \ line| test|
 |- new \n - line| - test\n- test2|
+|--|--|
+|asdf|asdf|
+| | asdf|
+| | asdf |
 `)
 
 func main() {
